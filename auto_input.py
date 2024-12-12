@@ -3,6 +3,7 @@ import pyperclip
 import time
 import keyboard
 
+
 # 找到点击输入
 def input_text(text, interval=0):
     while True:
@@ -23,6 +24,7 @@ def input_text(text, interval=0):
             print(f"Exception occurred: {e}")
             time.sleep(interval)
 
+
 # 找到然后点击
 def find_and_click(image_path, d_x=0, d_y=0, interval=0):
     while True:
@@ -39,6 +41,7 @@ def find_and_click(image_path, d_x=0, d_y=0, interval=0):
                 pass
         except Exception as e:
             time.sleep(interval)
+
 
 # 拉动滚轮
 def scroll(move_down_distance, scroll_times, scroll_distance):
@@ -101,7 +104,6 @@ def process(option_1, option_2, option_3, config, type):
     future_date = datetime.now() + timedelta(days=29)
     deal_time = future_date.strftime("%Y-%m-%d %H:%M")
     input_text(text=deal_time)
-
 
 
 def run_type(type):
