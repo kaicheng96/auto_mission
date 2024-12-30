@@ -3,78 +3,73 @@
 # @Time: 2024/12/24 11:21
 # @File: screen.py
 
-import sys
-from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QComboBox, QLabel, QFrame
+import tkinter as tk
+from tkinter import ttk
 
-class App(QWidget):
 
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle('流程步骤示例')
-        self.setGeometry(100, 100, 300, 200)
-        self.initUI()
+class App:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("流程步骤添加器")
+        # self.root.configure(background='blue')
+        self.root.geometry('400x400+300+100')
 
-    def initUI(self):
-        # 创建垂直布局
-        vertical_layout = QVBoxLayout()
+        self.buttons_frame = tk.Frame(self.root)
+        self.buttons_frame.pack(pady=10)
 
-        # 创建水平布局用于放置按钮
-        button_layout = QHBoxLayout()
+        self.add_button = tk.Button(self.buttons_frame, text="添加", command=self.add_step)
+        self.add_button.pack(side='left', padx=5)
 
-        # 创建“添加”和“运行”按钮
-        self.add_button = QPushButton('添加', self)
-        self.run_button = QPushButton('运行', self)
+        self.run_button = tk.Button(self.buttons_frame, text="运行", command=self.run_steps)
+        self.run_button.pack(side='left', padx=5)
 
-        # 将按钮添加到水平布局
-        button_layout.addWidget(self.add_button)
-        button_layout.addWidget(self.run_button)
+        # 创建一个容器用于放置步骤组合框和滚动条
+        self.steps_container = tk.Frame(self.root)
+        self.steps_container.pack(fill=tk.BOTH, expand=True, pady=10)
 
-        # 创建一个分割线
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
+        # 创建一个画布用于放置步骤组合框，并使其可滚动
+        self.canvas = tk.Canvas(self.steps_container)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # 将水平布局添加到垂直布局
-        vertical_layout.addWidget(line)
-        vertical_layout.addLayout(button_layout)
+        # 创建一个滚动条并绑定到画布
+        self.scrollbar = ttk.Scrollbar(self.steps_container, orient="vertical", command=self.canvas.yview)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # 设置窗口的布局
-        self.setLayout(vertical_layout)
+        # 配置画布的滚动区域
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.canvas.bind('<Configure>', lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
 
-        # 存储步骤和下拉框
+        # 创建一个内部框架，用于放置步骤组合框
+        self.steps_frame = tk.Frame(self.canvas)
+        self.canvas.create_window((0, 0), window=self.steps_frame, anchor="nw")
+
+        # 创建一个内部框架，用于放置步骤组合框
+        self.steps_frame = tk.Frame(self.canvas)
+        self.canvas.create_window((0, 0), window=self.steps_frame, anchor="nw")
+
         self.steps = []
 
-        # 连接按钮的点击信号到槽函数
-        self.add_button.clicked.connect(self.add_combobox)
-        self.run_button.clicked.connect(self.run_steps)
+    def add_step(self):
+        step_label = ttk.Label(self.steps_frame, text=f"步骤 {len(self.steps) + 1}:")
+        step_label.grid(row=len(self.steps), column=0, padx=5, pady=5, sticky="w")
 
+        step_combobox = ttk.Combobox(self.steps_frame, values=["单击", "滑动"], state="readonly")
+        step_combobox.grid(row=len(self.steps), column=1, padx=5, pady=5)
+        step_combobox.current(0)  # 设置默认选项为"单击"
 
-    def add_combobox(self):
-        # 创建步骤标签和下拉框
-        step_number = len(self.steps) + 1
-        step_label = QLabel(f"步骤{step_number}: 样式", self)
-        combobox = QComboBox(self)
-        combobox.addItems(["单击", "滑动"])
+        self.steps.append(step_combobox)
 
-        # 创建一个水平布局用于放置步骤标签和下拉框
-        step_layout = QHBoxLayout()
-        step_layout.addWidget(step_label)
-        step_layout.addWidget(combobox)
-
-        # 添加到垂直布局中，位于按钮上方
-        self.layout().insertLayout(len(self.steps), step_layout)
-
-        # 存储步骤信息
-        self.steps.append((step_label, combobox))
+        # 更新滚动区域
+        self.canvas.update_idletasks()
+        self.canvas.config(scrollregion=self.canvas.bbox("all"))
+        # self.steps.append(step_combobox)
 
     def run_steps(self):
-        # 打印每个下拉框的选择
-        for step_label, combobox in self.steps:
-            print(f"{step_label.text}: {combobox.currentText()}")
+        for step in self.steps:
+            print(step.get())  # 这里仅打印出每个步骤的选择，实际应用中可以执行相应的操作
 
 
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    ex = App()
-    ex.show()
-    sys.exit(app.exec())
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = App(root)
+    root.mainloop()
