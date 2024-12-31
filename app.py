@@ -43,17 +43,13 @@ class App:
         self.steps_frame = tk.Frame(self.canvas)
         self.canvas.create_window((0, 0), window=self.steps_frame, anchor="nw")
 
-        # 创建一个内部框架，用于放置步骤组合框
-        self.steps_frame = tk.Frame(self.canvas)
-        self.canvas.create_window((0, 0), window=self.steps_frame, anchor="nw")
-
         self.steps = []
 
     def add_step(self):
         step_label = ttk.Label(self.steps_frame, text=f"步骤 {len(self.steps) + 1}:")
         step_label.grid(row=len(self.steps), column=0, padx=5, pady=5, sticky="w")
 
-        step_combobox = ttk.Combobox(self.steps_frame, values=["单击", "滑动"], state="readonly")
+        step_combobox = ttk.Combobox(self.steps_frame, values=["单击", "滑动", ], state="readonly")
         step_combobox.grid(row=len(self.steps), column=1, padx=5, pady=5)
         step_combobox.current(0)  # 设置默认选项为"单击"
 
@@ -65,8 +61,15 @@ class App:
         # self.steps.append(step_combobox)
 
     def run_steps(self):
-        for step in self.steps:
-            print(step.get())  # 这里仅打印出每个步骤的选择，实际应用中可以执行相应的操作
+        for i, step in enumerate(self.steps):
+
+            print(f'第{i + 1}步：', step.get())  # 这里仅打印出每个步骤的选择，实际应用中可以执行相应的操作
+            if step.get() == '单击':
+                # 执行方法
+                print('执行单击方法')
+            elif step.get() == '滑动':
+                # 执行方法
+                print('执行滑动方法')
 
 
 if __name__ == "__main__":
