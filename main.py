@@ -62,8 +62,7 @@ def main(json_file=None):
     # }
 
     # 使用示例
-    # folder_path = 'annex/click_photo'  # 请替换为你的实际文件夹路径
-    folder_path = 'annex/click_photo'
+    folder_path = 'annex/click_photo'  # 请替换为你的实际文件夹路径
     config = generate_config_from_photos(folder_path)
 
     # 示例选项
