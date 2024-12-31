@@ -1,7 +1,7 @@
 # -*- coding:utf-8 -*-
 # @Author: KwokFu
 # @Time: 2024/12/24 11:21
-# @File: screen.py
+# @File: app.py
 
 import tkinter as tk
 from tkinter import ttk
