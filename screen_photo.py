@@ -1,7 +1,8 @@
 # -*- coding:utf-8 -*-
 # @Author: Scofield
-# @Time: 2025/1/15 11:21
+# @Time: 2025/1/28 22:21
 # @File: screen_photo.py
+
 """
 功能描述：
     1. 程序实现用户输入一张照片后框选区域进行截图。
@@ -28,6 +29,14 @@ class ImageCropper:
         self.root = root
         self.root.title("图片裁剪工具")
 
+        # 保存原始窗口大小
+        self.full_width = 1000
+        self.full_height = 600
+        self.compact_width = 300  # 收起时的宽度
+
+        # 设置初始窗口大小
+        self.root.geometry(f"{self.full_width}x{self.full_height}")
+
         # 初始化变量
         self.image = None
         self.photo = None
@@ -39,6 +48,7 @@ class ImageCropper:
         self.rect = None
         self.current_folder = None
         self.original_image_path = None
+        self.right_frame_visible = True  # 添加一个变量来跟踪right_frame的可见状态
 
         # 设置预览框的大小
         self.preview_width = 200
@@ -51,6 +61,18 @@ class ImageCropper:
 
         # 创建界面
         self.create_widgets()
+
+    def toggle_right_frame(self):
+        """显示或隐藏右侧框架并调整窗口大小"""
+        if self.right_frame_visible:
+            self.right_frame.pack_forget()
+            self.toggle_button.config(text="显示图片")
+            self.root.geometry(f"{self.compact_width}x{self.full_height}")
+        else:
+            self.right_frame.pack(side="right", expand=True, fill="both")
+            self.toggle_button.config(text="隐藏图片")
+            self.root.geometry(f"{self.full_width}x{self.full_height}")
+        self.right_frame_visible = not self.right_frame_visible
 
     def get_image_hash(self, image_path):
         """生成图片文件的hash值作为文件夹名"""
@@ -194,20 +216,28 @@ class ImageCropper:
         main_frame = tk.Frame(self.root)
         main_frame.pack(expand=True, fill="both", padx=10, pady=10)
 
-        # 左侧框架（用于主图片）
+        # 左侧框架（用于预览和历史记录）
         left_frame = tk.Frame(main_frame)
-        left_frame.pack(side="left", expand=True, fill="both")
+        left_frame.pack(side="left", padx=10)
 
-        # 右侧框架（用于预览和历史记录）
-        right_frame = tk.Frame(main_frame)
-        right_frame.pack(side="right", padx=10)
+        # 右侧框架（用于主图片）
+        self.right_frame = tk.Frame(main_frame)  # 将right_frame设为实例变量
+        self.right_frame.pack(side="right", expand=True, fill="both")
+
+        # 创建按钮框架
+        button_frame = tk.Frame(left_frame)
+        button_frame.pack(pady=5)
+
+        self.select_button = tk.Button(button_frame, text="选择图片", command=self.select_image)
+        self.select_button.pack(side="left", padx=2)
+
+        # 添加显示/隐藏按钮
+        self.toggle_button = tk.Button(button_frame, text="隐藏图片", command=self.toggle_right_frame)
+        self.toggle_button.pack(side="left", padx=2)
 
         # 创建按钮和信息显示区
-        control_frame = tk.Frame(left_frame)
+        control_frame = tk.Frame(self.right_frame)
         control_frame.pack(fill="x", pady=5)
-
-        self.select_button = tk.Button(control_frame, text="选择图片", command=self.select_image)
-        self.select_button.pack(side="left", padx=5)
 
         # 添加尺寸信息标签
         self.size_label = tk.Label(control_frame, text="原始尺寸: -")
@@ -220,7 +250,7 @@ class ImageCropper:
         self.selection_size_label.pack(side="left", padx=5)
 
         # 创建带滚动条的画布框架
-        canvas_frame = tk.Frame(left_frame)
+        canvas_frame = tk.Frame(self.right_frame)
         canvas_frame.pack(expand=True, fill="both")
 
         # 创建画布和滚动条
@@ -240,18 +270,18 @@ class ImageCropper:
         self.canvas.pack(side="left", expand=True, fill="both")
 
         # 显示信息标签
-        self.info_label = tk.Label(left_frame, text="请选择要处理的图片")
+        self.info_label = tk.Label(self.right_frame, text="请选择要处理的图片")
         self.info_label.pack(pady=5)
 
         # 创建历史记录列表框
-        history_label = tk.Label(right_frame, text="历史截图:")
+        history_label = tk.Label(left_frame, text="历史截图:")
         history_label.pack(pady=(0, 5))
 
-        self.history_listbox = tk.Listbox(right_frame, width=30, height=15)
+        self.history_listbox = tk.Listbox(left_frame, width=30, height=15)
         self.history_listbox.pack(fill="both", expand=True)
 
         # 创建预览框架
-        preview_frame = tk.Frame(right_frame, width=self.preview_width, height=self.preview_height)
+        preview_frame = tk.Frame(left_frame, width=self.preview_width, height=self.preview_height)
         preview_frame.pack_propagate(False)
         preview_frame.pack(pady=10)
 
@@ -260,7 +290,7 @@ class ImageCropper:
         self.preview_label.pack(expand=True, fill="both")
 
         # 创建删除按钮
-        self.delete_button = tk.Button(right_frame, text="删除选中截图", command=self.delete_selected)
+        self.delete_button = tk.Button(left_frame, text="删除选中截图", command=self.delete_selected)
         self.delete_button.pack(pady=5)
         self.delete_button.config(state="disabled")
 
@@ -271,6 +301,7 @@ class ImageCropper:
         self.canvas.bind("<Configure>", self.on_canvas_configure)
         self.canvas.bind_all("<MouseWheel>", self.on_mousewheel)
         self.history_listbox.bind('<<ListboxSelect>>', self.on_select_history)
+
 
     def update_history_list(self):
         """更新历史记录列表"""
