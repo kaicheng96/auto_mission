@@ -2,7 +2,7 @@
 # @Author: scofield
 # @Time: {datetime.datetime.now().strftime('%Y/%m/%d %H:%M')}  # 动态生成当前时间
 # @File: app.py
-
+# 添加ai \添加if else\n excel参数
 """
 功能描述：
     1.总客户端
@@ -19,8 +19,8 @@ from flow_manager import FlowManager
 
 if __name__ == "__main__":
     root = tk.Tk()
-    root.title("图片裁剪工具")
-    root.geometry("1400x700")  # 设置窗口初始大小
+    root.title("自动化流程工具")
+    root.geometry("1400x900")  # 设置窗口初始大小
 
     flow_manager = FlowManager()
 
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     image_cropper = ImageCropper(right_container, root, flow_manager)  # 添加 `ImageCropper` 界面
 
     # 添加两个容器到 `PanedWindow`
-    paned_window.add(left_container, minsize=300, width=770)  # 允许最小宽度
+    paned_window.add(left_container, minsize=800, width=900)  # 允许最小宽度
     paned_window.add(right_container, minsize=250)  # 允许最小宽度
 
     root.mainloop()

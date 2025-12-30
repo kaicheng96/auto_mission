@@ -19,9 +19,14 @@
 
 import tkinter as tk
 from tkinter import filedialog, ttk, messagebox
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageGrab
 import os
 import cv2
+try:
+    import keyboard
+    HAS_KEYBOARD = True
+except ImportError:
+    HAS_KEYBOARD = False
 
 class ImageCropper:
     def __init__(self, master, root, flow_manager):
@@ -56,6 +61,16 @@ class ImageCropper:
         # 设置预览框的大小
         self.preview_width = 150
         self.preview_height = 150
+
+        # 截图相关变量
+        self.screenshot_window = None
+        self.screenshot_image = None
+
+        # 快捷键状态跟踪
+        self.alt_pressed = False
+        self.x_pressed = False
+        self.hotkey_registered = False
+        self._screenshot_in_progress = False
 
         # 创建界面
         self.create_widgets()
@@ -118,6 +133,11 @@ class ImageCropper:
         if self.video_cap:
             self.video_cap.release()
         self.video_cap = None
+
+        # 移除视频控制框架（如果存在）
+        if hasattr(self, 'video_control_frame'):
+            self.video_control_frame.destroy()
+
         self.canvas.delete("all")
         file_ext = file_path.lower().split('.')[-1]
 
@@ -150,8 +170,26 @@ class ImageCropper:
                 # 获取视频原始分辨率
                 video_width = int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 video_height = int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                # 调整 Canvas 适应视频大小
-                self.canvas.config(width=video_width, height=video_height)
+
+                # 限制Canvas的最大尺寸，确保控制组件可见
+                max_canvas_width = 1200  # 最大宽度
+                max_canvas_height = 800  # 最大高度
+
+                # 计算适合的Canvas尺寸
+                if video_width > max_canvas_width or video_height > max_canvas_height:
+                    # 按比例缩放
+                    width_ratio = max_canvas_width / video_width
+                    height_ratio = max_canvas_height / video_height
+                    scale_ratio = min(width_ratio, height_ratio)
+
+                    canvas_width = int(video_width * scale_ratio)
+                    canvas_height = int(video_height * scale_ratio)
+                else:
+                    canvas_width = video_width
+                    canvas_height = video_height
+
+                # 调整 Canvas 适应视频大小（限制最大尺寸）
+                self.canvas.config(width=canvas_width, height=canvas_height)
 
                 # 使用统一的定位方式
                 self.photo = ImageTk.PhotoImage(image)
@@ -195,6 +233,7 @@ class ImageCropper:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 image = Image.fromarray(frame)
                 self.photo = ImageTk.PhotoImage(image)
+                self.image = image  # 更新self.image，确保截图使用正确的帧
 
                 # 清除之前的图像
                 self.canvas.delete("all")
@@ -215,21 +254,27 @@ class ImageCropper:
 
     def create_video_controls(self):
         """创建视频控制条"""
-        # 如果已存在控制框架，先移除
-        if hasattr(self, 'control_frame'):
-            self.control_frame.destroy()
+        # 如果已存在视频控制框架，先移除
+        if hasattr(self, 'video_control_frame'):
+            self.video_control_frame.destroy()
 
-        self.control_frame = tk.Frame(self.right_frame)
-        self.control_frame.pack(fill="x", pady=5)
+        # 创建底部固定控制区域
+        self.video_control_frame = tk.Frame(self.right_frame, bg='#f0f0f0', relief='raised', bd=1)
+        self.video_control_frame.pack(fill="x", side="bottom", pady=(5, 0))
+
+        # 创建控制组件容器
+        control_container = tk.Frame(self.video_control_frame, bg='#f0f0f0')
+        control_container.pack(pady=5, padx=5, fill="x")
 
         # 播放/暂停按钮
-        self.play_button = tk.Button(self.control_frame, text="播放", command=self.toggle_video_play)
-        self.play_button.pack(side="left", padx=5)
+        self.play_button = tk.Button(control_container, text="播放", command=self.toggle_video_play,
+                                   bg='white', relief='raised', bd=1)
+        self.play_button.pack(side="left", padx=(0, 10))
 
         # 视频进度条
-        self.video_slider = tk.Scale(self.control_frame, from_=0, to=self.video_frame_count,
-                                     orient="horizontal", length=400)
-        self.video_slider.pack(side="left", padx=5, fill="x", expand=True)
+        self.video_slider = tk.Scale(control_container, from_=0, to=self.video_frame_count,
+                                     orient="horizontal", bg='#f0f0f0', highlightthickness=0)
+        self.video_slider.pack(side="left", fill="x", expand=True)
         self.video_slider.bind("<ButtonRelease-1>", self.on_slider_release)
 
     def toggle_video_play(self):
@@ -260,16 +305,12 @@ class ImageCropper:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 image = Image.fromarray(frame)
                 self.photo = ImageTk.PhotoImage(image)
-
-                # 获取画布尺寸
-                canvas_width = self.canvas.winfo_width()
-                canvas_height = self.canvas.winfo_height()
+                self.image = image  # 更新self.image，确保截图使用正确的帧
 
                 # 清除之前的图像
                 self.canvas.delete("all")
-                # 创建新图像
-                self.canvas.create_image(canvas_width // 2, canvas_height // 2,
-                                         anchor="center", image=self.photo)
+                # 使用与正常播放相同的定位方式（左上角对齐）
+                self.canvas.create_image(0, 0, anchor="nw", image=self.photo)
 
     def show_video_frame(self):
         """显示当前视频帧"""
@@ -279,6 +320,7 @@ class ImageCropper:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 image = Image.fromarray(frame)
                 self.photo = ImageTk.PhotoImage(image)
+                self.image = image  # 更新self.image，确保截图使用正确的帧
                 self.canvas.create_image(0, 0, anchor="nw", image=self.photo)
                 self.canvas.image = self.photo
 
@@ -330,6 +372,7 @@ class ImageCropper:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 image = Image.fromarray(frame)
                 self.photo = ImageTk.PhotoImage(image)
+                self.image = image  # 更新self.image，确保截图使用正确的帧
                 # 创建滚动区域大小与视频帧大小一致
                 self.canvas.config(scrollregion=(0, 0, image.width, image.height))
                 self.canvas.create_image(0, 0, anchor="nw", image=self.photo)
@@ -567,6 +610,9 @@ class ImageCropper:
         self.select_button = tk.Button(button_frame, text="选择文件", command=self.select_media)
         self.select_button.pack(side="left", padx=2)
 
+        self.screenshot_button = tk.Button(button_frame, text="截图", command=self.start_screenshot)
+        self.screenshot_button.pack(side="left", padx=2)
+
         # 添加显示/隐藏按钮
         self.toggle_button = tk.Button(button_frame, text="隐藏图片", command=self.toggle_right_frame)
         self.toggle_button.pack(side="left", padx=2)
@@ -638,6 +684,420 @@ class ImageCropper:
         self.canvas.bind_all("<MouseWheel>", self.on_mousewheel)
         self.history_listbox.bind('<<ListboxSelect>>', self.on_select_history)
 
+        # 注册全局快捷键
+        self.register_global_hotkey()
+
+        # 如果没有keyboard库，则使用窗口级别的键盘事件
+        if not HAS_KEYBOARD:
+            self.root.bind('<KeyPress>', self.on_key_press)
+            self.root.bind('<KeyRelease>', self.on_key_release)
+
+    def register_global_hotkey(self):
+        """注册全局快捷键"""
+        if HAS_KEYBOARD and not self.hotkey_registered:
+            try:
+                # 先清除可能存在的旧热键
+                self.unregister_global_hotkey()
+
+                # 注册Alt+X快捷键
+                keyboard.add_hotkey('alt+x', self.handle_screenshot_shortcut, suppress=True)
+                keyboard.add_hotkey('alt+X', self.handle_screenshot_shortcut, suppress=True)
+                self.hotkey_registered = True
+                print("全局快捷键 Alt+X 已注册")
+            except Exception as e:
+                print(f"注册全局快捷键失败: {e}")
+
+    def unregister_global_hotkey(self):
+        """注销全局快捷键"""
+        if HAS_KEYBOARD and self.hotkey_registered:
+            try:
+                keyboard.remove_hotkey('alt+x')
+                keyboard.remove_hotkey('alt+X')
+                self.hotkey_registered = False
+            except Exception as e:
+                print(f"注销全局快捷键失败: {e}")
+
+    def on_key_press(self, event):
+        """键盘按下事件处理"""
+        if event.keysym.lower() == 'alt_l' or event.keysym.lower() == 'alt_r':
+            self.alt_pressed = True
+        elif event.keysym.lower() == 'x':
+            self.x_pressed = True
+
+        # 检查Alt+X组合键
+        if self.alt_pressed and self.x_pressed:
+            self.handle_screenshot_shortcut()
+
+    def on_key_release(self, event):
+        """键盘释放事件处理"""
+        if event.keysym.lower() == 'alt_l' or event.keysym.lower() == 'alt_r':
+            self.alt_pressed = False
+        elif event.keysym.lower() == 'x':
+            self.x_pressed = False
+
+    def handle_screenshot_shortcut(self):
+        """处理截图快捷键，在后台进行截图"""
+        # 防止重复触发
+        if hasattr(self, '_screenshot_in_progress') and self._screenshot_in_progress:
+            print("截图正在进行中，忽略重复触发")
+            return
+
+        self._screenshot_in_progress = True
+        print("Alt+X 快捷键触发，开始截图")
+
+        # 直接在后台触发截图，不恢复窗口
+        try:
+            self.start_screenshot()
+        finally:
+            # 延迟重置标志，避免短时间内重复触发
+            self.root.after(1000, lambda: setattr(self, '_screenshot_in_progress', False))
+
+        # 注册全局快捷键
+        self.register_global_hotkey()
+
+    def start_screenshot(self):
+        """开始截图功能"""
+        if not self.flow_manager.has_flow():
+            messagebox.showwarning("提示", "请先在左侧输入流程名称并点击‘添加流程’。")
+            return
+
+        self.current_folder = self.flow_manager.get_screenshot_dir()
+        if not self.current_folder:
+            messagebox.showerror("错误", "无法获取流程截图目录。")
+            return
+
+        # 创建截图选择窗口
+        self.screenshot_window = ScreenshotWindow(self.root, self.on_screenshot_complete)
+
+    def on_screenshot_complete(self, cropped_image):
+        """截图完成回调"""
+        if cropped_image:
+            # 重置之前的状态
+            self.image = cropped_image
+            self.photo = None
+            if self.video_cap:
+                self.video_cap.release()
+            self.video_cap = None
+            self.canvas.delete("all")
+
+            # 显示截图
+            self.size_label.config(text=f"截图尺寸: {self.image.width} x {self.image.height}像素")
+            self.show_media()
+
+            # 更新历史记录
+            self.update_history_list()
+
+            # 自动选中最后一项并预览
+            if self.history_listbox.size() > 0:
+                last_index = self.history_listbox.size() - 1
+                self.history_listbox.selection_clear(0, tk.END)
+                self.history_listbox.selection_set(last_index)
+                self.history_listbox.see(last_index)
+
+                last_filename = self.history_listbox.get(last_index)
+                last_file_path = os.path.join(self.current_folder, last_filename)
+                self.show_preview(last_file_path)
+
+                self.delete_button.config(state="normal")
+                self.info_label.config(text=f"截图完成，选中文件: {last_filename}")
+            else:
+                self.preview_label.config(image='', text="目录为空，没有文件可以预览", bg='#f0f0f0')
+                self.delete_button.config(state="disabled")
+                self.info_label.config(text="截图完成")
+
+
+class ScreenshotWindow:
+    """全屏截图选择窗口"""
+    def __init__(self, parent, callback):
+        self.parent = parent
+        self.callback = callback
+
+        # 创建全屏窗口
+        self.window = tk.Toplevel(parent)
+        self.window.attributes('-fullscreen', True)
+        self.window.attributes('-topmost', True)
+        self.window.configure(bg='gray')
+
+        # 截取全屏
+        try:
+            self.screenshot = ImageGrab.grab()
+        except Exception as e:
+            messagebox.showerror("错误", f"无法截取屏幕: {e}")
+            self.window.destroy()
+            return
+
+        # 转换为PhotoImage
+        self.photo = ImageTk.PhotoImage(self.screenshot)
+
+        # 创建画布
+        self.canvas = tk.Canvas(self.window, cursor="cross", highlightthickness=0)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+        self.canvas.create_image(0, 0, anchor="nw", image=self.photo)
+
+        # 选择区域变量
+        self.start_x = None
+        self.start_y = None
+        self.rect = None
+        self.select_rect = None
+        self.resize_handles = []
+        self.is_dragging = False
+        self.drag_start_x = 0
+        self.drag_start_y = 0
+        self.resize_mode = None  # 调整模式：nw, n, ne, e, se, s, sw, w
+
+        # 绑定事件
+        self.canvas.bind("<ButtonPress-1>", self.on_press)
+        self.canvas.bind("<B1-Motion>", self.on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self.on_release)
+        self.canvas.bind("<ButtonPress-3>", self.on_right_click)  # 右键取消
+        self.window.bind("<Escape>", self.cancel_screenshot)
+        self.window.focus_set()
+
+    def on_press(self, event):
+        """鼠标按下事件"""
+        x, y = event.x, event.y
+
+        # 检查是否点击了调整手柄
+        self.resize_mode = self.get_resize_mode(x, y)
+
+        if self.resize_mode:
+            # 调整模式
+            self.is_dragging = True
+            self.drag_start_x = x
+            self.drag_start_y = y
+        elif self.select_rect:
+            # 检查是否在选择区域内（用于移动）
+            coords = self.canvas.coords(self.select_rect)
+            if coords and len(coords) >= 4:
+                x1, y1, x2, y2 = coords
+                if x1 <= x <= x2 and y1 <= y <= y2:
+                    self.is_dragging = True
+                    self.drag_start_x = x
+                    self.drag_start_y = y
+                else:
+                    # 开始新选择
+                    self.clear_selection()
+                    self.start_x = x
+                    self.start_y = y
+                    self.rect = self.canvas.create_rectangle(x, y, x, y, outline="red", width=2)
+        else:
+            # 开始新选择
+            self.start_x = x
+            self.start_y = y
+            self.rect = self.canvas.create_rectangle(x, y, x, y, outline="red", width=2)
+
+    def on_drag(self, event):
+        """鼠标拖拽事件"""
+        x, y = event.x, event.y
+
+        if self.resize_mode and self.select_rect and self.is_dragging:
+            # 调整选择区域大小
+            self.resize_selection(x, y)
+        elif self.is_dragging and self.select_rect:
+            # 移动选择区域
+            dx = x - self.drag_start_x
+            dy = y - self.drag_start_y
+            self.move_selection(dx, dy)
+            self.drag_start_x = x
+            self.drag_start_y = y
+        elif self.rect:
+            # 创建新选择区域
+            self.canvas.coords(self.rect, self.start_x, self.start_y, x, y)
+
+    def on_release(self, event):
+        """鼠标释放事件"""
+        if self.rect and not self.select_rect:
+            # 完成选择，创建可调整的选择框
+            coords = self.canvas.coords(self.rect)
+            if len(coords) >= 4:
+                x1, y1, x2, y2 = coords
+                if abs(x2 - x1) > 10 and abs(y2 - y1) > 10:  # 最小选择区域
+                    self.create_selectable_rect(x1, y1, x2, y2)
+                    self.canvas.delete(self.rect)
+                    self.rect = None
+                    self.create_control_buttons()
+
+        self.is_dragging = False
+        self.resize_mode = None
+
+    def on_right_click(self, event):
+        """右键点击事件 - 取消截图"""
+        self.cancel_screenshot()
+
+    def create_selectable_rect(self, x1, y1, x2, y2):
+        """创建可选择和调整的矩形"""
+        # 确保坐标顺序正确
+        x1, x2 = min(x1, x2), max(x1, x2)
+        y1, y2 = min(y1, y2), max(y1, y2)
+
+        # 创建选择矩形
+        self.select_rect = self.canvas.create_rectangle(x1, y1, x2, y2, outline="red", width=2, fill="", stipple="gray50")
+
+        # 创建8个调整手柄
+        handle_size = 8
+        handles_pos = [
+            (x1, y1, "nw"), (x1 + (x2-x1)/2, y1, "n"), (x2, y1, "ne"),
+            (x2, y1 + (y2-y1)/2, "e"), (x2, y2, "se"),
+            (x1 + (x2-x1)/2, y2, "s"), (x1, y2, "sw"), (x1, y1 + (y2-y1)/2, "w")
+        ]
+
+        self.resize_handles = []
+        for hx, hy, mode in handles_pos:
+            handle = self.canvas.create_rectangle(
+                hx - handle_size/2, hy - handle_size/2,
+                hx + handle_size/2, hy + handle_size/2,
+                fill="red", outline="white", width=1, tags=mode
+            )
+            self.resize_handles.append((handle, mode))
+
+    def create_control_buttons(self):
+        """创建确认和取消按钮"""
+        # 获取屏幕尺寸
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+
+        # 创建按钮框架
+        button_frame = tk.Frame(self.window, bg='white')
+        button_frame.place(relx=0.5, rely=0.95, anchor="center")
+
+        # 确认按钮
+        confirm_btn = tk.Button(button_frame, text="确认截图", command=self.confirm_screenshot,
+                               bg='green', fg='white', font=('Arial', 12, 'bold'))
+        confirm_btn.pack(side=tk.LEFT, padx=10)
+
+        # 取消按钮
+        cancel_btn = tk.Button(button_frame, text="取消", command=self.cancel_screenshot,
+                              bg='red', fg='white', font=('Arial', 12, 'bold'))
+        cancel_btn.pack(side=tk.LEFT, padx=10)
+
+    def get_resize_mode(self, x, y):
+        """获取调整模式"""
+        if not self.resize_handles:
+            return None
+
+        handle_size = 8
+        for handle, mode in self.resize_handles:
+            coords = self.canvas.coords(handle)
+            if len(coords) >= 4:
+                hx1, hy1, hx2, hy2 = coords
+                if hx1 - handle_size <= x <= hx2 + handle_size and hy1 - handle_size <= y <= hy2 + handle_size:
+                    return mode
+        return None
+
+    def resize_selection(self, x, y):
+        """调整选择区域大小"""
+        if not self.select_rect:
+            return
+
+        coords = self.canvas.coords(self.select_rect)
+        if len(coords) < 4:
+            return
+
+        x1, y1, x2, y2 = coords
+
+        if self.resize_mode == "nw":
+            x1, y1 = x, y
+        elif self.resize_mode == "n":
+            y1 = y
+        elif self.resize_mode == "ne":
+            x2, y1 = x, y
+        elif self.resize_mode == "e":
+            x2 = x
+        elif self.resize_mode == "se":
+            x2, y2 = x, y
+        elif self.resize_mode == "s":
+            y2 = y
+        elif self.resize_mode == "sw":
+            x1, y2 = x, y
+        elif self.resize_mode == "w":
+            x1 = x
+
+        # 确保最小尺寸
+        min_size = 20
+        if x2 - x1 < min_size:
+            if self.resize_mode in ["nw", "w", "sw"]:
+                x1 = x2 - min_size
+            else:
+                x2 = x1 + min_size
+        if y2 - y1 < min_size:
+            if self.resize_mode in ["nw", "n", "ne"]:
+                y1 = y2 - min_size
+            else:
+                y2 = y1 + min_size
+
+        # 更新矩形
+        self.canvas.coords(self.select_rect, x1, y1, x2, y2)
+        self.update_resize_handles()
+
+    def move_selection(self, dx, dy):
+        """移动选择区域"""
+        if not self.select_rect:
+            return
+
+        coords = self.canvas.coords(self.select_rect)
+        if len(coords) >= 4:
+            x1, y1, x2, y2 = coords
+            self.canvas.coords(self.select_rect, x1 + dx, y1 + dy, x2 + dx, y2 + dy)
+            self.update_resize_handles()
+
+    def update_resize_handles(self):
+        """更新调整手柄位置"""
+        if not self.select_rect or not self.resize_handles:
+            return
+
+        coords = self.canvas.coords(self.select_rect)
+        if len(coords) < 4:
+            return
+
+        x1, y1, x2, y2 = coords
+        handle_size = 8
+
+        handles_pos = [
+            (x1, y1), (x1 + (x2-x1)/2, y1), (x2, y1),
+            (x2, y1 + (y2-y1)/2), (x2, y2),
+            (x1 + (x2-x1)/2, y2), (x1, y2), (x1, y1 + (y2-y1)/2)
+        ]
+
+        for i, (handle, mode) in enumerate(self.resize_handles):
+            hx, hy = handles_pos[i]
+            self.canvas.coords(handle,
+                             hx - handle_size/2, hy - handle_size/2,
+                             hx + handle_size/2, hy + handle_size/2)
+
+    def clear_selection(self):
+        """清除当前选择"""
+        if self.rect:
+            self.canvas.delete(self.rect)
+            self.rect = None
+        if self.select_rect:
+            self.canvas.delete(self.select_rect)
+            self.select_rect = None
+        for handle, mode in self.resize_handles:
+            self.canvas.delete(handle)
+        self.resize_handles = []
+
+        # 移除按钮
+        for widget in self.window.winfo_children():
+            if isinstance(widget, tk.Frame):
+                widget.destroy()
+
+    def confirm_screenshot(self):
+        """确认截图"""
+        if self.select_rect:
+            coords = self.canvas.coords(self.select_rect)
+            if len(coords) >= 4:
+                x1, y1, x2, y2 = coords
+                # 裁剪截图
+                cropped = self.screenshot.crop((int(x1), int(y1), int(x2), int(y2)))
+                self.callback(cropped)
+        self.window.destroy()
+
+    def cancel_screenshot(self, event=None):
+        """取消截图"""
+        self.callback(None)
+        self.window.destroy()
+
+
 if __name__ == "__main__":
     from flow_manager import FlowManager
 
@@ -646,4 +1106,12 @@ if __name__ == "__main__":
     right_container = tk.Frame(root)
     app = ImageCropper(right_container, root, flow_manager)
     right_container.pack(fill=tk.BOTH, expand=True)  # 添加这行代码
+
+    # 程序退出时的清理
+    def on_closing():
+        if hasattr(app, 'unregister_global_hotkey'):
+            app.unregister_global_hotkey()
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
